@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
-from .models import OrganizationSeed, SourceClass
+from .models import OrganizationSeed, PublicDocument, SourceClass
 from .graph_models import (
     GraphFeedbackInput,
     GraphNodeType,
@@ -110,6 +110,59 @@ def create_app(database: str | Path | None = None) -> FastAPI:
         except Exception:  # noqa: BLE001
             return []
 
+    # ---- Documentos que já temos no banco: inteiro teor do DJEN (fonte oficial) ----
+    # Grounding sem Tavily: os eventos do processo confirmam decisores/eventos e a
+    # âncora captura qualquer contato presente. A varredura web vira complemento.
+    def _fetch_process_documents(cnpj: str, limit: int = 60) -> list[PublicDocument]:
+        url = os.environ.get("SUPABASE_URL")
+        key = os.environ.get("SUPABASE_SERVICE_KEY")
+        if not url or not key:
+            return []
+        raiz = "".join(c for c in cnpj if c.isdigit())[:8]
+        if len(raiz) != 8:
+            return []
+        try:
+            import httpx
+            r = httpx.get(
+                f"{url}/rest/v1/eventos",
+                headers={"apikey": key, "Authorization": f"Bearer {key}"},
+                params={
+                    "cnpj_raiz": f"eq.{raiz}",
+                    "texto": "not.is.null",
+                    "select": "numero_processo,tipo,texto,advogados,link_publicacao,ocorrido_em",
+                    "order": "ocorrido_em.desc",
+                    "limit": str(limit),
+                },
+                timeout=25,
+            )
+            if r.status_code >= 300:
+                return []
+            docs: list[PublicDocument] = []
+            for row in r.json():
+                texto = (row.get("texto") or "").strip()
+                if not texto:
+                    continue
+                # Anexa nomes dos advogados intimados (garante que a âncora os confirme
+                # mesmo quando o corpo abrevia); nome vem do próprio ato oficial.
+                advs = row.get("advogados") or []
+                nomes = " ".join(
+                    str(a.get("nome") or "") for a in advs if isinstance(a, dict)
+                ).strip()
+                corpo = f"{texto}\n{nomes}" if nomes else texto
+                proc = row.get("numero_processo") or ""
+                link = row.get("link_publicacao") or f"djen://evento/{proc}"
+                docs.append(
+                    PublicDocument(
+                        url=link,
+                        title=f"DJEN {proc} {row.get('tipo') or ''}".strip(),
+                        text=corpo,
+                        source_class=SourceClass.OFFICIAL_COURT,
+                    )
+                )
+            return docs
+        except Exception:  # noqa: BLE001
+            return []
+
     # ---- Jobs assíncronos: varredura completa em background ----
     # Consultoria = baixo volume; dict em memória basta (1 instância no Render).
     jobs: dict[str, dict] = {}
@@ -117,10 +170,11 @@ def create_app(database: str | Path | None = None) -> FastAPI:
     def _run_dossie_job(job_id: str, req: CNPJSearchRequest) -> None:
         try:
             known_people = _fetch_known_people(req.cnpj)
+            process_docs = _fetch_process_documents(req.cnpj)
             dossier, collection = pipeline.investigate_cnpj(
                 req.cnpj, legal_name=req.legal_name, state=req.state,
                 deep=req.deep, use_tavily=req.use_tavily, seed_urls=req.seed_urls,
-                known_people=known_people,
+                known_people=known_people, extra_documents=process_docs,
             )
             graph = pipeline.build_graph(dossier)
             projection = graph_to_crm_projection(graph)
@@ -130,6 +184,7 @@ def create_app(database: str | Path | None = None) -> FastAPI:
                 "graph_id": graph.graph_id,
                 "crm_projection": projection,
                 "pessoas_conhecidas": len(known_people),
+                "documentos_do_banco": len(process_docs),
                 "decisores": len(projection.get("crm_decisores", [])),
                 "evidencias": len(projection.get("entity_evidence", [])),
                 "banco": ingested,

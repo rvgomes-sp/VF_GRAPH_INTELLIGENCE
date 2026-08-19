@@ -16,7 +16,7 @@ from .learning import GuardedLearner
 from .identity import assess_entity_identity
 from .graph_engine import FiscalOpportunityGraphBuilder
 from .graph_models import GraphFeedbackInput, GraphOpportunity, ProcessGraphInput
-from .models import Dossier, OrganizationSeed, SourceClass
+from .models import Dossier, OrganizationSeed, PublicDocument, SourceClass
 from .policy import CollectionPolicy
 from .pdf_report import render_dossier_pdf
 from .storage import Repository
@@ -77,6 +77,7 @@ class OSINTPipeline:
         use_tavily: bool = True,
         seed_urls: list[str] | None = None,
         known_people: list[dict] | None = None,
+        extra_documents: list[PublicDocument] | None = None,
     ) -> tuple[Dossier, dict]:
         normalized = "".join(character for character in cnpj if character.isdigit())
         seed = OrganizationSeed(
@@ -99,8 +100,16 @@ class OSINTPipeline:
             "identity_resolution": {},
             "deep_search_executed": False,
             "rejected": [],
+            "documentos_do_banco": 0,
         }
         candidate_urls: list[tuple[str, SourceClass]] = []
+
+        # Documentos que já temos no banco (inteiro teor DJEN, etc.) — fonte oficial,
+        # ingerida ANTES do Tavily. Garante decisores/eventos mesmo com Tavily seco.
+        if extra_documents:
+            collection["claims_extracted"] += self._ingest_documents(seed, extra_documents)
+            collection["documents"] += len(extra_documents)
+            collection["documentos_do_banco"] = len(extra_documents)
 
         if use_tavily:
             discovery_client = TavilyDiscovery()
