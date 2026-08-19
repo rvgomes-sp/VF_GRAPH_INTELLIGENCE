@@ -69,6 +69,23 @@ def create_app(database: str | Path | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    # ---- Escrita direta no banco (Supabase é a verdade) ----
+    def _ingest_supabase(projection: dict) -> str:
+        url = os.environ.get("SUPABASE_URL")
+        key = os.environ.get("SUPABASE_SERVICE_KEY")
+        if not url or not key:
+            return "sem SUPABASE_URL/SUPABASE_SERVICE_KEY — projeção não gravada (defina no Render)"
+        try:
+            import httpx
+            r = httpx.post(
+                f"{url}/rest/v1/rpc/fn_ingest_crm_projection",
+                headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"p_projection": projection}, timeout=30,
+            )
+            return f"ok {r.status_code}" if r.status_code < 300 else f"erro {r.status_code}: {r.text[:120]}"
+        except Exception as exc:  # noqa: BLE001
+            return f"falha: {exc}"
+
     # ---- Jobs assíncronos: varredura completa em background ----
     # Consultoria = baixo volume; dict em memória basta (1 instância no Render).
     jobs: dict[str, dict] = {}
@@ -81,12 +98,14 @@ def create_app(database: str | Path | None = None) -> FastAPI:
             )
             graph = pipeline.build_graph(dossier)
             projection = graph_to_crm_projection(graph)
+            ingested = _ingest_supabase(projection)
             jobs[job_id] = {
                 "status": "done",
                 "graph_id": graph.graph_id,
                 "crm_projection": projection,
                 "decisores": len(projection.get("crm_decisores", [])),
                 "evidencias": len(projection.get("entity_evidence", [])),
+                "banco": ingested,
                 "collection": collection,
             }
         except Exception as exc:  # noqa: BLE001
