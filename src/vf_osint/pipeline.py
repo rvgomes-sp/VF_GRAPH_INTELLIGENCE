@@ -32,6 +32,8 @@ class OSINTPipeline:
         self.legacy_extractor = LegacyCRMExtractor()
         self.learner = GuardedLearner(self.repository)
         self.graph_builder = FiscalOpportunityGraphBuilder()
+        # Pessoas já conhecidas (QSA/processo) para ancoragem por entidade durante a coleta.
+        self._known_people: list[dict] = []
 
     def ingest_legacy(self, seed: OrganizationSeed, source_path: str | Path) -> int:
         path = Path(source_path)
@@ -74,6 +76,7 @@ class OSINTPipeline:
         deep: bool = False,
         use_tavily: bool = True,
         seed_urls: list[str] | None = None,
+        known_people: list[dict] | None = None,
     ) -> tuple[Dossier, dict]:
         normalized = "".join(character for character in cnpj if character.isdigit())
         seed = OrganizationSeed(
@@ -82,6 +85,8 @@ class OSINTPipeline:
             state=state,
             seed_urls=seed_urls or [],
         )
+        # Ancoragem por entidade conhecida em toda a coleta desta investigação.
+        self._known_people = known_people or []
         requested_seed = seed
         collection = {
             "providers": [],
@@ -193,6 +198,7 @@ class OSINTPipeline:
                 fetcher.close()
 
         dossier = self.build_dossier(seed, investigation_context=collection)
+        self._known_people = []
         return dossier, collection
 
     @staticmethod
@@ -240,6 +246,9 @@ class OSINTPipeline:
         for document in documents:
             self.repository.save_document(document)
             claims.extend(self.public_extractor.extract(seed, document))
+            claims.extend(
+                self.public_extractor.anchor_known_people(seed, document, self._known_people)
+            )
         existing = self.repository.claims_for(seed.subject_id)
         for claim in self.reconciler.reconcile(existing + claims):
             self.repository.save_claim(claim)

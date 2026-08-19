@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections import defaultdict
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -286,6 +287,64 @@ class PublicEvidenceExtractor:
                 )
         claims.extend(self._extract_structured_signals(seed, document, text))
         claims.extend(self._extract_contacts_and_people(seed, document, text))
+        return claims
+
+    @staticmethod
+    def anchor_known_people(
+        seed: OrganizationSeed,
+        document: PublicDocument,
+        known_people: list[dict] | None,
+    ) -> list[Claim]:
+        """Âncora por entidade conhecida (custo zero, sem LLM).
+
+        As pessoas já são conhecidas do banco (QSA da Receita + advogados do
+        processo). A varredura pública não precisa *descobrir* nomes: precisa
+        *confirmar* que eles aparecem em documento público e ancorar a evidência.
+        Quando o nome conhecido é localizado no texto, emitimos o mesmo claim
+        `person.professional_role` do caminho por regex — gerando nó PESSOA,
+        aresta COMPANY-[HAS]->PERSON e evidência com o score da fonte. O poder
+        decisório continua NÃO CONFIRMADO; é interlocutor até validação humana.
+        """
+        if not known_people:
+            return []
+        text = repair_mojibake(document.text)
+        folded_text = _fold(text)
+        claims: list[Claim] = []
+        seen: set[str] = set()
+        for person in known_people:
+            nome = " ".join(str(person.get("nome") or "").split())
+            if not _valid_person_name(nome):
+                continue
+            key = nome.casefold()
+            if key in seen:
+                continue
+            needle = _fold(nome)
+            position = folded_text.find(needle)
+            if position < 0:
+                continue
+            seen.add(key)
+            cargo = str(person.get("cargo") or "").strip() or "VINCULO SOCIETARIO/PROCESSUAL"
+            value = {
+                "name": nome.title(),
+                "role": cargo.upper(),
+                "decision_maker": "POTENCIAL",
+            }
+            claims.append(
+                make_claim(
+                    seed,
+                    document,
+                    "person.professional_role",
+                    value,
+                    _window(text, position, 320),
+                    "known_entity_anchor_v1",
+                    rationale=(
+                        "Pessoa já conhecida (QSA/processo) localizada em documento público; "
+                        "confirma presença e vincula evidência, sem presumir poder decisório."
+                    ),
+                    tags=["known_entity", "potential_decision_maker"],
+                    confirmable=False,
+                )
+            )
         return claims
 
     @classmethod
@@ -691,6 +750,13 @@ class EvidenceReconciler:
             else claim
             for claim in result
         ]
+
+
+def _fold(value: str) -> str:
+    """Minúsculas sem acento, para casar nomes conhecidos com o texto público."""
+    normalized = unicodedata.normalize("NFKD", value)
+    stripped = "".join(character for character in normalized if not unicodedata.combining(character))
+    return re.sub(r"\s+", " ", stripped).strip().casefold()
 
 
 def _window(text: str, index: int, radius: int = 260) -> str:

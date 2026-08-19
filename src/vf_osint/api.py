@@ -86,15 +86,41 @@ def create_app(database: str | Path | None = None) -> FastAPI:
         except Exception as exc:  # noqa: BLE001
             return f"falha: {exc}"
 
+    # ---- Leitura do banco: pessoas já conhecidas (QSA + advogados do processo) ----
+    # A varredura não descobre nomes; ela CONFIRMA/enriquece quem já sabemos.
+    def _fetch_known_people(cnpj: str) -> list[dict]:
+        url = os.environ.get("SUPABASE_URL")
+        key = os.environ.get("SUPABASE_SERVICE_KEY")
+        if not url or not key:
+            return []
+        raiz = "".join(c for c in cnpj if c.isdigit())[:8]
+        if len(raiz) != 8:
+            return []
+        try:
+            import httpx
+            r = httpx.get(
+                f"{url}/rest/v1/decisores",
+                headers={"apikey": key, "Authorization": f"Bearer {key}"},
+                params={"cnpj_raiz": f"eq.{raiz}", "select": "nome,cargo"},
+                timeout=20,
+            )
+            if r.status_code >= 300:
+                return []
+            return [row for row in r.json() if isinstance(row, dict) and row.get("nome")]
+        except Exception:  # noqa: BLE001
+            return []
+
     # ---- Jobs assíncronos: varredura completa em background ----
     # Consultoria = baixo volume; dict em memória basta (1 instância no Render).
     jobs: dict[str, dict] = {}
 
     def _run_dossie_job(job_id: str, req: CNPJSearchRequest) -> None:
         try:
+            known_people = _fetch_known_people(req.cnpj)
             dossier, collection = pipeline.investigate_cnpj(
                 req.cnpj, legal_name=req.legal_name, state=req.state,
                 deep=req.deep, use_tavily=req.use_tavily, seed_urls=req.seed_urls,
+                known_people=known_people,
             )
             graph = pipeline.build_graph(dossier)
             projection = graph_to_crm_projection(graph)
@@ -103,6 +129,7 @@ def create_app(database: str | Path | None = None) -> FastAPI:
                 "status": "done",
                 "graph_id": graph.graph_id,
                 "crm_projection": projection,
+                "pessoas_conhecidas": len(known_people),
                 "decisores": len(projection.get("crm_decisores", [])),
                 "evidencias": len(projection.get("entity_evidence", [])),
                 "banco": ingested,

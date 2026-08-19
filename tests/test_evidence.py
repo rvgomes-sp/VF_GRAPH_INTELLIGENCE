@@ -264,3 +264,37 @@ def test_ocr_truncated_company_name_still_allows_local_public_phone():
     )
     claims = PublicEvidenceExtractor().extract(seed, document)
     assert any(claim.predicate == "organization.contact.phone" for claim in claims)
+
+
+def test_known_entity_anchor_creates_professional_role_claim():
+    # A pessoa já é conhecida do banco (QSA/processo). Quando o nome aparece
+    # num documento público, a âncora emite person.professional_role (que vira
+    # nó PESSOA -> decisor na projeção), sem presumir poder decisório. O nome
+    # é casado ignorando acento, mas armazenado com o acento real.
+    document = PublicDocument(
+        url="https://fortbras.com.br/institucional",
+        title="Institucional",
+        text=(
+            "A area financeira e conduzida pela diretoria. "
+            "Joao da Silva Junior atua junto ao grupo desde 2019."
+        ),
+        source_class=SourceClass.COMPANY_OWNED,
+    )
+    known = [
+        {"nome": "João da Silva Júnior", "cargo": "Sócio/Administrador"},
+        {"nome": "Maria Inexistente Souza", "cargo": "Advogado"},
+    ]
+    claims = PublicEvidenceExtractor.anchor_known_people(seed(), document, known)
+    roles = [c for c in claims if c.predicate == "person.professional_role"]
+    assert len(roles) == 1  # só o nome presente no texto ancora
+    assert roles[0].value["name"] == "João Da Silva Júnior"
+    assert roles[0].status == ClaimStatus.HYPOTHESIS  # confirmable=False -> nunca fato
+
+
+def test_known_entity_anchor_noop_without_people():
+    document = PublicDocument(
+        url="https://x.example", title="x", text="qualquer texto",
+        source_class=SourceClass.COMPANY_OWNED,
+    )
+    assert PublicEvidenceExtractor.anchor_known_people(seed(), document, None) == []
+    assert PublicEvidenceExtractor.anchor_known_people(seed(), document, []) == []
