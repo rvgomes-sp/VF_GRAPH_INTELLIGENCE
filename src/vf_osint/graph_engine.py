@@ -448,6 +448,60 @@ class FiscalOpportunityGraphBuilder:
                 "Pessoa identificada no documento de origem.",
             )
             return person_id
+        if predicate in {"person.contact.email", "person.contact.phone"} and isinstance(claim.value, dict):
+            raw = str(claim.value.get("value") or "").strip()
+            person_name = str(claim.value.get("person") or "").strip()
+            if not raw or not person_name:
+                return None
+            node_type = GraphNodeType.EMAIL if predicate.endswith("email") else GraphNodeType.PHONE
+            contact_id = stable_node_id(node_type, raw)
+            person_id = stable_node_id(GraphNodeType.PERSON, person_name)
+            graph.add_node(
+                GraphNode(
+                    node_id=contact_id,
+                    node_type=node_type,
+                    properties={
+                        "endereco" if node_type == GraphNodeType.EMAIL else "numero": raw,
+                        "score": _claim_evidence_score(claim),
+                        "status_evidencia": claim.status.value,
+                    },
+                )
+            )
+            graph.add_claim_relation(
+                claim,
+                person_id,
+                contact_id,
+                GraphRelationshipType.USES,
+                evidence_id,
+                "Contato publicado junto ao nome da pessoa (assinatura/procuração); vínculo por proximidade.",
+            )
+            graph.add_claim_relation(
+                claim,
+                document_id,
+                contact_id,
+                GraphRelationshipType.CONTAINS,
+                evidence_id,
+                "Contato aparece literalmente no documento público.",
+            )
+            if node_type == GraphNodeType.EMAIL and "@" in raw:
+                domain = raw.split("@", 1)[1].casefold()
+                domain_id = stable_node_id(GraphNodeType.DOMAIN, domain)
+                graph.add_node(
+                    GraphNode(
+                        node_id=domain_id,
+                        node_type=GraphNodeType.DOMAIN,
+                        properties={"dominio": domain},
+                    )
+                )
+                graph.add_claim_relation(
+                    claim,
+                    contact_id,
+                    domain_id,
+                    GraphRelationshipType.ASSOCIATED_WITH,
+                    evidence_id,
+                    "O domínio é parte literal do endereço de e-mail publicado.",
+                )
+            return contact_id
         if predicate in {"organization.contact.email", "organization.contact.phone"}:
             raw = claim.value.get("value") if isinstance(claim.value, dict) else claim.value
             node_type = GraphNodeType.EMAIL if predicate.endswith("email") else GraphNodeType.PHONE

@@ -324,8 +324,9 @@ class PublicEvidenceExtractor:
                 continue
             seen.add(key)
             cargo = str(person.get("cargo") or "").strip() or "VINCULO SOCIETARIO/PROCESSUAL"
+            nome_titulo = nome.title()
             value = {
-                "name": nome.title(),
+                "name": nome_titulo,
                 "role": cargo.upper(),
                 "decision_maker": "POTENCIAL",
             }
@@ -342,6 +343,74 @@ class PublicEvidenceExtractor:
                         "confirma presença e vincula evidência, sem presumir poder decisório."
                     ),
                     tags=["known_entity", "potential_decision_maker"],
+                    confirmable=False,
+                )
+            )
+            # Contato no bloco de assinatura/procuração ao redor do nome:
+            # e-mail/telefone que aparecem colados ao advogado/sócio conhecido.
+            claims.extend(
+                PublicEvidenceExtractor._contacts_near_name(
+                    seed, document, text, position, len(needle), nome_titulo
+                )
+            )
+        return claims
+
+    @staticmethod
+    def _contacts_near_name(
+        seed: OrganizationSeed,
+        document: PublicDocument,
+        text: str,
+        position: int,
+        name_length: int,
+        person_name: str,
+    ) -> list[Claim]:
+        """E-mail/telefone na vizinhança do nome (assinatura/procuração) -> pessoa."""
+        start = max(0, position - 160)
+        end = min(len(text), position + name_length + 320)
+        block = text[start:end]
+        claims: list[Claim] = []
+        seen_email: set[str] = set()
+        for match in EMAIL_RE.finditer(block):
+            email = match.group(1).strip(".,;:").lower()
+            if _email_is_noise(email) or email in seen_email:
+                continue
+            seen_email.add(email)
+            claims.append(
+                make_claim(
+                    seed,
+                    document,
+                    "person.contact.email",
+                    {"value": email, "person": person_name},
+                    _window(block, match.start(), 200),
+                    "known_entity_contact_v1",
+                    rationale=(
+                        "E-mail publicado junto ao nome conhecido (assinatura/procuração); "
+                        "vínculo por proximidade, requer validação humana."
+                    ),
+                    tags=["known_entity_contact"],
+                    confirmable=False,
+                )
+            )
+        seen_phone: set[str] = set()
+        for match in PHONE_RE.finditer(block):
+            phone = _normalize_phone(match.group(0))
+            digits = "".join(character for character in phone if character.isdigit())
+            if len(digits) not in {10, 11, 12, 13} or phone in seen_phone:
+                continue
+            seen_phone.add(phone)
+            claims.append(
+                make_claim(
+                    seed,
+                    document,
+                    "person.contact.phone",
+                    {"value": phone, "person": person_name},
+                    _window(block, match.start(), 200),
+                    "known_entity_contact_v1",
+                    rationale=(
+                        "Telefone publicado junto ao nome conhecido (assinatura/procuração); "
+                        "vínculo por proximidade, requer validação humana."
+                    ),
+                    tags=["known_entity_contact"],
                     confirmable=False,
                 )
             )

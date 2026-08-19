@@ -55,6 +55,20 @@ def graph_to_crm_projection(graph: GraphOpportunity) -> dict[str, Any]:
                     "graph_snapshot_id": graph.graph_id,
                 }
             )
+    # Contato por pessoa: arestas PESSOA-[USES]->EMAIL/TELEFONE (assinatura/procuração).
+    person_contacts: dict[str, dict[str, str]] = {}
+    for relationship in graph.relationships:
+        if relationship.relationship_type != GraphRelationshipType.USES:
+            continue
+        target = nodes.get(relationship.to_node)
+        if not target:
+            continue
+        bucket = person_contacts.setdefault(relationship.from_node, {})
+        if target.node_type == GraphNodeType.EMAIL and not bucket.get("email"):
+            bucket["email"] = target.properties.get("endereco")
+        elif target.node_type == GraphNodeType.PHONE and not bucket.get("telefone"):
+            bucket["telefone"] = target.properties.get("numero")
+
     decision_makers = [
         {
             "empresa_graph_node_id": relationship.from_node,
@@ -65,6 +79,8 @@ def graph_to_crm_projection(graph: GraphOpportunity) -> dict[str, Any]:
             "prioridade": _decision_priority(
                 str(nodes[relationship.to_node].properties.get("classificacao") or "")
             ),
+            "email": person_contacts.get(relationship.to_node, {}).get("email"),
+            "telefone": person_contacts.get(relationship.to_node, {}).get("telefone"),
             "evidence_relationship_id": relationship.relationship_id,
         }
         for relationship in graph.relationships

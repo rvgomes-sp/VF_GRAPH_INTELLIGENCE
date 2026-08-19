@@ -298,3 +298,22 @@ def test_known_entity_anchor_noop_without_people():
     )
     assert PublicEvidenceExtractor.anchor_known_people(seed(), document, None) == []
     assert PublicEvidenceExtractor.anchor_known_people(seed(), document, []) == []
+
+
+def test_known_entity_anchor_captures_contact_near_name():
+    # E-mail/telefone colados ao nome conhecido (assinatura/procuração) devem
+    # virar claims person.contact.* vinculados à pessoa.
+    document = PublicDocument(
+        url="https://esaj.tjsp.jus.br/procuracao.pdf",
+        title="Procuração",
+        text=("Monique Barros de Lima - OAB/RJ 175520 - "
+              "e-mail: monique.lima@escritorio.adv.br - Tel: (21) 99876-5432."),
+        source_class=SourceClass.OFFICIAL_COURT,
+    )
+    known = [{"nome": "Monique Barros de Lima", "cargo": "Advogado"}]
+    claims = PublicEvidenceExtractor.anchor_known_people(seed(), document, known)
+    emails = [c for c in claims if c.predicate == "person.contact.email"]
+    phones = [c for c in claims if c.predicate == "person.contact.phone"]
+    assert emails and emails[0].value["value"] == "monique.lima@escritorio.adv.br"
+    assert emails[0].value["person"] == "Monique Barros De Lima"
+    assert phones and "21" in phones[0].value["value"]
