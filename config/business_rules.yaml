@@ -1,0 +1,21 @@
+version: 2
+owner: comercial_vf
+rules:
+  opportunity_origin: process_first
+  cnpj_only_mode: ENTITY_ENRICHMENT_ONLY
+  every_relationship_requires_evidence: true
+  temporal_snapshots_are_immutable: true
+  advance_requires:
+    - official_entity_confirmation
+    - official_process_number
+    - official_current_event
+    - company_role_in_process
+  outreach_requires_human_review: true
+  administrators_are_not_automatic_decision_makers: true
+  legacy_score_is_non_authoritative: true
+  stages:
+    - MONITORAR
+    - QUALIFICAR
+    - PRIORIDADE
+    - ACAO_IMEDIATA
+    - NAO_PROSSEGUIR

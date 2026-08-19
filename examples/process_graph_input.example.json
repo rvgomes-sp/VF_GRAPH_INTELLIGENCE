@@ -1,0 +1,27 @@
+{
+  "process_number": "5001234-22.2026.4.03.6100",
+  "tribunal": "TRF3",
+  "instance": "1",
+  "process_class": "Execução Fiscal",
+  "subject": "Tributo a validar",
+  "amount": 12000000,
+  "phase": "Fase a validar na fonte",
+  "active": true,
+  "company_cnpj": "12.345.678/0001-90",
+  "company_legal_name": "EMPRESA EXEMPLO LTDA",
+  "company_role": "EXECUTADA",
+  "events": [
+    {
+      "event_type": "Penhora",
+      "event_date": "2026-08-19T12:00:00-03:00",
+      "description": "Exemplo sintético: substitua pelo texto fiel da movimentação."
+    }
+  ],
+  "source_system": "DATAJUD",
+  "source_url": "https://fonte-oficial.example/processo/5001234",
+  "source_title": "Exemplo sintético de registro processual",
+  "source_excerpt": "EXEMPLO SINTÉTICO: processo 5001234-22.2026.4.03.6100 afeta EMPRESA EXEMPLO LTDA, CNPJ 12.345.678/0001-90, com evento de penhora. Substitua integralmente pelo trecho público original.",
+  "source_class": "official_court",
+  "source_date": "2026-08-19T12:00:00-03:00",
+  "evidence_score": 75
+}

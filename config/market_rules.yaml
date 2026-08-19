@@ -1,0 +1,18 @@
+version: 2
+owner: tecnico_securitario
+protected_rules:
+  insurer_direction_requires_current_appetite: true
+  underwriting_approval_never_inferred: true
+  judicial_acceptance_never_promised: true
+  policy_issuance_never_promised: true
+  legal_strategy_belongs_to_tax_counsel: true
+  guarantee_suitability_requires:
+    - obligation
+    - current_amount
+    - term
+    - trigger
+    - beneficiary
+    - current_procedural_phase
+    - counter_guarantee_capacity
+  guarantee_not_located_is_not_absence: true
+  procedural_event_only_suggests_hypothesis: true

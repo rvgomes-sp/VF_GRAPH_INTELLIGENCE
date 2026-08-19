@@ -1,0 +1,33 @@
+[
+  {
+    "name": "Receita Federal - Cadastros e dados abertos",
+    "url": "https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/dados-abertos/cadastros",
+    "source_class": "official_registry",
+    "purpose": "descobrir e versionar arquivos cadastrais oficiais do CNPJ"
+  },
+  {
+    "name": "JUCESP - Pesquisa de Empresas",
+    "url": "https://www.jucesponline.sp.gov.br/",
+    "source_class": "official_registry",
+    "purpose": "confirmar publicidade registral e localizar ficha cadastral"
+  },
+  {
+    "name": "TJSP - Consulta de Processos",
+    "url": "https://esaj.tjsp.jus.br/cpopg/open.do",
+    "source_class": "official_court",
+    "purpose": "consultar autos e movimentos publicos sem contornar captcha ou autenticacao"
+  },
+  {
+    "name": "CNJ - Comunicacao processual",
+    "url": "https://comunica.pje.jus.br/consulta",
+    "source_class": "official_court",
+    "purpose": "localizar comunicacoes processuais publicas e suas datas"
+  },
+  {
+    "name": "PGFN - Consulta publica de devedores",
+    "url": "https://www.listadevedores.pgfn.gov.br/",
+    "source_class": "official_government",
+    "purpose": "verificar apenas informacoes que a PGFN disponibiliza publicamente"
+  }
+]
+
