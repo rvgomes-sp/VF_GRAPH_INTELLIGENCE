@@ -243,6 +243,12 @@ class OSINTPipeline:
         ) or claim.predicate.startswith("person.")
         if not sensitive:
             return True
+        # Âncora por entidade conhecida: o nome já está vinculado a este CNPJ
+        # (QSA/processo, vindo do banco). O documento foi puxado pelo próprio CNPJ,
+        # então o vínculo não depende de o nome da empresa cair na mesma janela.
+        tags = getattr(claim, "tags", None) or []
+        if "known_entity" in tags or "known_entity_contact" in tags:
+            return True
         if _context_relevant(seed, claim.excerpt):
             return True
         return (
