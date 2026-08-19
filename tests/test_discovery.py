@@ -35,7 +35,10 @@ def test_tavily_discovery_keeps_indexed_linkedin_without_crawling_it():
     assert any("dados.gov.br" in url for url, _ in result.candidate_urls)
 
 
-def test_query_plan_covers_all_intelligence_layers():
+def test_query_plan_covers_all_intelligence_layers(monkeypatch):
+    # Cobertura total é uma garantia do plano COMPLETO (Tavily pago).
+    # O modo lean (default) reduz de propósito; aqui validamos o plano cheio.
+    monkeypatch.setenv("VF_LEAN_SEARCH", "0")
     seed = OrganizationSeed(legal_name="EMPRESA TESTE LTDA", cnpj="12345678000190")
     specs = _layered_query_plan(seed, deep=True)
     layers = {spec.layer for spec in specs}
@@ -100,3 +103,17 @@ def test_blacklist_is_sent_to_tavily_and_enforced_on_results():
     assert all(set(GLOBAL_EXCLUDED_DOMAINS) <= set(call["exclude_domains"]) for call in client.calls)
     assert not any("cnpj.biz" in document.url for document in result.documents)
     assert any("global_domain_blacklist" == item["reason"] for item in result.rejected)
+
+
+def test_lean_search_trims_to_high_yield_objectives(monkeypatch):
+    from vf_osint.discovery import _identity_query_plan
+    monkeypatch.setenv("VF_LEAN_SEARCH", "1")
+    seed = OrganizationSeed(legal_name="EMPRESA TESTE LTDA", cnpj="12345678000190")
+    lean = _identity_query_plan(seed) + _layered_query_plan(seed, deep=True)
+    monkeypatch.setenv("VF_LEAN_SEARCH", "0")
+    full = _identity_query_plan(seed) + _layered_query_plan(seed, deep=True)
+    assert len(lean) < len(full)
+    assert len(lean) <= 10  # dossiê enxuto para o Tavily grátis
+    objectives = {spec.objective for spec in lean}
+    # mantém as camadas onde os decisores conhecidos aparecem
+    assert {"finance_leadership", "legal_tax_leadership", "corporate_contacts"} <= objectives

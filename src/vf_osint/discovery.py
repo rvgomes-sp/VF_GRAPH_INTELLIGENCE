@@ -385,6 +385,29 @@ class TavilyDiscovery:
         return documents
 
 
+# ---------------------------------------------------------------------------
+# Modo LEAN (default ligado): consultoria = baixo volume + Tavily grátis.
+# Reduz o dossiê de ~34 para ~9 buscas de alto rendimento, priorizando as
+# camadas onde os DECISORES conhecidos aparecem (governança/contatos/evento)
+# — o que faz o crédito grátis render ~3-4x mais dossiês. Desligue com
+# VF_LEAN_SEARCH=0 quando o Tavily tiver plano pago (volta o plano completo).
+# ---------------------------------------------------------------------------
+_LEAN_IDENTITY_OBJECTIVES = {"exact_cnpj", "cnpj_name_coherence"}
+_LEAN_LAYERED_OBJECTIVES = {
+    "economic_group",          # estrutura/grupo — ancora identidade e coligadas
+    "corporate_contacts",      # e-mail/telefone/domínio (padrão de e-mail)
+    "finance_leadership",      # CFO / diretor financeiro / tesouraria
+    "legal_tax_leadership",    # jurídico interno / gerente tributário
+    "external_tax_counsel",    # tributarista / advogado externo
+    "asset_constraints",       # penhora / SISBAJUD / substituição (evento securitário)
+    "recent_official_events",  # movimentação recente
+}
+
+
+def _lean_search_enabled() -> bool:
+    return os.environ.get("VF_LEAN_SEARCH", "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
 def _identity_query_plan(seed: OrganizationSeed) -> list[QuerySpec]:
     cnpj = _format_cnpj(seed.cnpj)
     specs = [
@@ -403,6 +426,9 @@ def _identity_query_plan(seed: OrganizationSeed) -> list[QuerySpec]:
                 f'"{cnpj}" "{seed.legal_name}"',
             )
         )
+    if _lean_search_enabled():
+        # exact_cnpj está sempre presente e sustenta o gate de identidade.
+        specs = [spec for spec in specs if spec.objective in _LEAN_IDENTITY_OBJECTIVES] or specs[:1]
     return specs
 
 
@@ -461,6 +487,8 @@ def _layered_query_plan(seed: OrganizationSeed, *, deep: bool) -> list[QuerySpec
                 QuerySpec(EvidenceLayer.RECENT_EVENTS, "recent_tax_events", f'{target} CARF OR execução fiscal OR auto de infração', time_range="year"),
             ]
         )
+    if _lean_search_enabled():
+        specs = [spec for spec in specs if spec.objective in _LEAN_LAYERED_OBJECTIVES]
     if any(len(spec.query) >= 400 for spec in specs):
         raise ValueError("Consulta Tavily excede o limite de 399 caracteres")
     return specs
