@@ -3,7 +3,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+import uuid
+import traceback
+
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
@@ -65,6 +68,43 @@ def create_app(database: str | Path | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # ---- Jobs assíncronos: varredura completa em background ----
+    # Consultoria = baixo volume; dict em memória basta (1 instância no Render).
+    jobs: dict[str, dict] = {}
+
+    def _run_dossie_job(job_id: str, req: CNPJSearchRequest) -> None:
+        try:
+            dossier, collection = pipeline.investigate_cnpj(
+                req.cnpj, legal_name=req.legal_name, state=req.state,
+                deep=req.deep, use_tavily=req.use_tavily, seed_urls=req.seed_urls,
+            )
+            graph = pipeline.build_graph(dossier)
+            projection = graph_to_crm_projection(graph)
+            jobs[job_id] = {
+                "status": "done",
+                "graph_id": graph.graph_id,
+                "crm_projection": projection,
+                "decisores": len(projection.get("crm_decisores", [])),
+                "evidencias": len(projection.get("entity_evidence", [])),
+                "collection": collection,
+            }
+        except Exception as exc:  # noqa: BLE001
+            jobs[job_id] = {"status": "error", "erro": str(exc), "trace": traceback.format_exc()[-800:]}
+
+    @app.post("/api/dossie/jobs")
+    def enqueue_dossie(request: CNPJSearchRequest, background: BackgroundTasks) -> dict:
+        job_id = uuid.uuid4().hex
+        jobs[job_id] = {"status": "processing"}
+        background.add_task(_run_dossie_job, job_id, request)
+        return {"job_id": job_id, "status": "processing"}
+
+    @app.get("/api/dossie/jobs/{job_id}")
+    def get_dossie_job(job_id: str) -> dict:
+        job = jobs.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="job nao encontrado")
+        return {"job_id": job_id, **job}
 
     @app.get("/", response_class=HTMLResponse)
     def search_page():
