@@ -26,8 +26,11 @@ def test_extra_documents_ground_decisor_without_tavily(tmp_path):
     )
     assert collection["documentos_do_banco"] == 1
     projection = graph_to_crm_projection(pipe.build_graph(dossier))
-    nomes = [d.get("nome") for d in projection.get("crm_decisores", [])]
+    decisores = projection.get("crm_decisores", [])
+    nomes = [d.get("nome") for d in decisores]
     assert any("Fabio Henrique" in (n or "") for n in nomes)
+    # cada decisor precisa carregar o CNPJ (senão fn_ingest grava com cnpj_raiz vazio)
+    assert all(d.get("cnpj") == "22761584000150" for d in decisores)
 
 
 def test_no_extra_documents_is_safe(tmp_path):

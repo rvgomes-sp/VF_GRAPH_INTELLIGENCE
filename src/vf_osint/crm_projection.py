@@ -73,6 +73,7 @@ def graph_to_crm_projection(graph: GraphOpportunity) -> dict[str, Any]:
         {
             "empresa_graph_node_id": relationship.from_node,
             "pessoa_graph_node_id": relationship.to_node,
+            "cnpj": nodes[relationship.from_node].properties.get("cnpj"),
             "nome": nodes[relationship.to_node].properties.get("nome"),
             "classificacao": nodes[relationship.to_node].properties.get("classificacao"),
             "poder_decisorio": nodes[relationship.to_node].properties.get("poder_decisorio"),
@@ -86,6 +87,7 @@ def graph_to_crm_projection(graph: GraphOpportunity) -> dict[str, Any]:
         for relationship in graph.relationships
         if relationship.relationship_type == GraphRelationshipType.HAS
         and relationship.to_node in nodes
+        and relationship.from_node in nodes
         and nodes[relationship.to_node].node_type == GraphNodeType.PERSON
         and (nodes[relationship.to_node].properties.get("nome") or "").strip()
     ]
