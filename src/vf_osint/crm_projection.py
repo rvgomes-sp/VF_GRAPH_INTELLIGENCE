@@ -71,6 +71,7 @@ def graph_to_crm_projection(graph: GraphOpportunity) -> dict[str, Any]:
         if relationship.relationship_type == GraphRelationshipType.HAS
         and relationship.to_node in nodes
         and nodes[relationship.to_node].node_type == GraphNodeType.PERSON
+        and (nodes[relationship.to_node].properties.get("nome") or "").strip()
     ]
     evidence = [
         {
