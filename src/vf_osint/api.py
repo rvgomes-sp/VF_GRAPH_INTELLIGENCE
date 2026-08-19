@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -53,6 +54,17 @@ def create_app(database: str | Path | None = None) -> FastAPI:
     db = Path(database or os.environ.get("VF_OSINT_DB", "data/vf_osint.db"))
     pipeline = OSINTPipeline(db)
     app = FastAPI(title="V&F Graph Intelligence System", version="0.5.0")
+
+    # CORS — o CRM (browser) chama /api/search/cnpj de outro domínio.
+    # Restrinja allow_origins ao domínio do CRM em produção se quiser.
+    _origins = os.environ.get("CORS_ORIGINS", "*").split(",")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[o.strip() for o in _origins],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.get("/", response_class=HTMLResponse)
     def search_page():

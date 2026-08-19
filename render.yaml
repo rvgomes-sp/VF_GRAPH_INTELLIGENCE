@@ -1,0 +1,15 @@
+# Deploy 1-clique no Render (render.com) — plano free, build a partir deste repo.
+# Passos: New > Blueprint > conectar este repositório > definir TAVILY_API_KEY.
+services:
+  - type: web
+    name: vf-graph-intelligence
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: TAVILY_API_KEY
+        sync: false            # você cola a chave no painel do Render
+      - key: VF_OSINT_DB
+        value: /tmp/vf_osint.db
+      - key: CORS_ORIGINS
+        value: "*"             # restrinja ao domínio do CRM depois, se quiser
